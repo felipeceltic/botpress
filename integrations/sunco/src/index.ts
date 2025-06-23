@@ -151,6 +151,8 @@ const integration = new bp.Integration({
       },
     },
   },
+
+
   handler: async ({ req, client }) => {
     if (!req.body) {
       console.warn('Handler received an empty body')
@@ -167,10 +169,9 @@ const integration = new bp.Integration({
 
       const payload = event.payload
 
-      if (payload.message.content.type !== 'text') {
-        console.warn('Received a message that is not a text message')
-        continue
-      }
+      // Removido o filtro que só aceitava mensagens de texto
+      // Agora aceita diferentes tipos de conteúdo
+      const messageContent = payload.message.content
 
       if (payload.message.author.type === 'business') {
         console.warn('Skipping message that is from a business')
@@ -192,12 +193,58 @@ const integration = new bp.Integration({
         pictureUrl: payload.message.author.avatarUrl,
       })
 
+      // Criar mensagem baseada no tipo de conteúdo
+      let messagePayload: any
+      let messageType: string
+
+      switch (messageContent.type) {
+        case 'text':
+          messageType = 'text'
+          messagePayload = { text: messageContent.text }
+          break
+        
+        case 'file':
+          // Verificar se é áudio baseado no mediaType
+          if (messageContent.mediaType?.startsWith('audio/')) {
+            messageType = 'audio'
+            messagePayload = { audioUrl: messageContent.mediaUrl }
+          } else if (messageContent.mediaType?.startsWith('video/')) {
+            messageType = 'video'
+            messagePayload = { videoUrl: messageContent.mediaUrl }
+          } else if (messageContent.mediaType?.startsWith('image/')) {
+            messageType = 'image'
+            messagePayload = { imageUrl: messageContent.mediaUrl }
+          } else {
+            // Para outros tipos de arquivo
+            messageType = 'file'
+            messagePayload = { fileUrl: messageContent.mediaUrl }
+          }
+          break
+        
+        case 'image':
+          messageType = 'image'
+          messagePayload = { imageUrl: messageContent.mediaUrl }
+          break
+        
+        case 'location':
+          messageType = 'location'
+          messagePayload = {
+            latitude: messageContent.coordinates?.lat,
+            longitude: messageContent.coordinates?.long
+          }
+          break
+        
+        default:
+          console.warn(`Unsupported message type: ${messageContent.type}`)
+          continue
+      }
+
       await client.createMessage({
         tags: { id: payload.message.id },
-        type: 'text',
+        type: messageType,
         userId: user.id,
         conversationId: conversation.id,
-        payload: { text: payload.message.content.text },
+        payload: messagePayload,
       })
     }
   },
